@@ -18,14 +18,15 @@ import ZoneMap from '#/engine/zone/ZoneMap.js';
 import Packet from '#/io/Packet.js';
 import Environment from '#/util/Environment.js';
 import { printDebug, printWarning } from '#/util/Logger.js';
+import { SimArea } from '../sim/SimArea.js';
 
 export default class GameMap {
     private static readonly OPEN: number = 0x0;
-    private static readonly BLOCK_MAP_SQUARE: number = 0x1;
-    private static readonly LINK_BELOW: number = 0x2;
-    private static readonly REMOVE_ROOFS: number = 0x4;
-    private static readonly VISIBLE_BELOW: number = 0x8;
-    private static readonly NOT_LOW_DETAIL: number = 0x10;
+    private static readonly BLOCKED: number = 0x1;
+    private static readonly BRIDGE: number = 0x2;
+    private static readonly ROOF: number = 0x4;
+    private static readonly WALL: number = 0x8;
+    private static readonly LOWMEMORY: number = 0x10;
 
     private static readonly Y: number = 4;
     private static readonly X: number = 64;
@@ -37,6 +38,7 @@ export default class GameMap {
     private readonly zonemap: ZoneMap;
     private readonly multimap: Set<number>;
     private readonly freemap: Set<number>;
+    simArea: SimArea[] | null = null;
 
     constructor(members: boolean) {
         this.members = members;
@@ -58,6 +60,9 @@ export default class GameMap {
             const mapsquareX: number = mx << 6;
             const mapsquareZ: number = mz << 6;
 
+            if (!this.mapWithinSim(mx, mz)) {
+                continue;
+            }
             this.loadNpcs(Packet.load(`${path}n${mx}_${mz}`), mapsquareX, mapsquareZ);
             this.loadObjs(Packet.load(`${path}o${mx}_${mz}`), mapsquareX, mapsquareZ);
             // collision
@@ -111,6 +116,9 @@ export default class GameMap {
                 if (!this.members && !this.isFreeToPlay(absoluteX, absoluteZ)) {
                     continue;
                 }
+                if (!this.absMapWithinSim(absoluteX, absoluteZ)) {
+                    continue;
+                }
                 const npcType: NpcType = NpcType.get(id);
                 const size: number = npcType.size;
                 const npc: Npc = new Npc(level, absoluteX, absoluteZ, size, size, EntityLifeCycle.RESPAWN, World.getNextNid(), npcType.id, npcType.moverestrict, npcType.blockwalk);
@@ -131,6 +139,9 @@ export default class GameMap {
                 const id: number = packet.g2();
                 const count: number = packet.g1();
                 if (!this.members && !this.isFreeToPlay(absoluteX, absoluteZ)) {
+                    continue;
+                }
+                if (!this.absMapWithinSim(absoluteX, absoluteZ)) {
                     continue;
                 }
                 const objType: ObjType = ObjType.get(id);
@@ -170,6 +181,9 @@ export default class GameMap {
 
                 for (let z: number = 0; z < GameMap.Z; z++) {
                     const absoluteZ: number = z + mapsquareZ;
+                    if (!this.absMapWithinSim(absoluteX, absoluteZ)) {
+                        continue;
+                    }
 
                     if (!this.members && !this.isFreeToPlay(absoluteX, absoluteZ) && !this.bordersFreeToPlay(absoluteX, absoluteZ)) {
                         continue;
@@ -182,15 +196,15 @@ export default class GameMap {
 
                     const land: number = lands[this.packCoord(x, z, level)];
 
-                    if ((land & GameMap.REMOVE_ROOFS) !== GameMap.OPEN) {
+                    if ((land & GameMap.ROOF) !== GameMap.OPEN) {
                         changeRoofCollision(absoluteX, absoluteZ, level, true);
                     }
 
-                    if ((land & GameMap.BLOCK_MAP_SQUARE) !== GameMap.BLOCK_MAP_SQUARE) {
+                    if ((land & GameMap.BLOCKED) !== GameMap.BLOCKED) {
                         continue;
                     }
 
-                    const bridged: boolean = (level === 1 ? land & GameMap.LINK_BELOW : lands[this.packCoord(x, z, 1)] & GameMap.LINK_BELOW) === GameMap.LINK_BELOW;
+                    const bridged: boolean = (level === 1 ? land & GameMap.BRIDGE : lands[this.packCoord(x, z, 1)] & GameMap.BRIDGE) === GameMap.BRIDGE;
                     const actualLevel: number = bridged ? level - 1 : level;
                     if (actualLevel < 0) {
                         continue;
@@ -219,12 +233,15 @@ export default class GameMap {
 
                 const absoluteX: number = x + mapsquareX;
                 const absoluteZ: number = z + mapsquareZ;
+                if (!this.absMapWithinSim(absoluteX, absoluteZ)) {
+                    continue;
+                }
 
                 if (!this.members && !this.isFreeToPlay(absoluteX, absoluteZ) && !this.bordersFreeToPlay(absoluteX, absoluteZ)) {
                     continue;
                 }
 
-                const bridged: boolean = (level === 1 ? lands[coord] & GameMap.LINK_BELOW : lands[this.packCoord(x, z, 1)] & GameMap.LINK_BELOW) === GameMap.LINK_BELOW;
+                const bridged: boolean = (level === 1 ? lands[coord] & GameMap.BRIDGE : lands[this.packCoord(x, z, 1)] & GameMap.BRIDGE) === GameMap.BRIDGE;
                 const actualLevel: number = bridged ? level - 1 : level;
                 if (actualLevel < 0) {
                     continue;
@@ -276,6 +293,29 @@ export default class GameMap {
 
     private bordersFreeToPlay(x: number, z: number): boolean {
         return this.isFreeToPlay(x + 1, z) || this.isFreeToPlay(x - 1, z) || this.isFreeToPlay(x, z + 1) || this.isFreeToPlay(x, z - 1);
+    }
+    private mapWithinSim(mx: number, mz: number): boolean {
+        if (!this.simArea) {
+            return true;
+        }
+        for (const sim of this.simArea) {
+            if (mx >= sim.x1 >> 6 && mx <= sim.x2 >> 6 && mz >= sim.z1 >> 6 && mz <= sim.z2 >> 6) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private absMapWithinSim(absoluteX: number, absoluteZ: number): boolean {
+        if (!this.simArea) {
+            return true;
+        }
+        for (const sim of this.simArea) {
+            if (absoluteX >= sim.x1 && absoluteX <= sim.x2 && absoluteZ >= sim.z1 && absoluteZ <= sim.z2) {
+                return true;
+            }
+        }
+        return false;
     }
 }
 

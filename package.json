@@ -29,7 +29,8 @@
     "sqlite:migrate": "prisma migrate deploy --schema prisma/singleworld/schema.prisma",
     "sqlite:reset": "prisma migrate reset --force --schema prisma/singleworld/schema.prisma",
     "sqlite:schema": "prisma migrate dev --schema prisma/singleworld/schema.prisma",
-    "start": "bun install && bun run src/app.ts"
+    "start": "bun install && bun run src/app.ts",
+    "sim": "bun run src/Sim.ts"
   },
   "lint-staged": {
     "*.{js,ts}": [
@@ -48,7 +49,8 @@
     "ejs": "^3.1.10",
     "jimp": "^1.6.0",
     "kleur": "^4.1.5",
-    "kysely": "^0.27.6",
+    "kysely": "^0.27.5",
+    "kysely-bun-worker": "^1.2.1",
     "mysql2": "^3.12.0",
     "node-forge": "^1.3.1",
     "prom-client": "^15.1.3",

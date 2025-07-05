@@ -98,6 +98,8 @@ import { WalkTriggerSetting } from '#/util/WalkTriggerSetting.js';
 import { createWorker } from '#/util/WorkerFactory.js';
 
 import InputTrackingBlob from './entity/tracking/InputEvent.js';
+import { SimPlayer } from '../sim/SimPlayer.js';
+import { SimArea } from '#/sim/SimArea.js';
 
 const priv = forge.pki.privateKeyFromPem(Environment.STANDALONE_BUNDLE ? await (await fetch('data/config/private.pem')).text() : fs.readFileSync('data/config/private.pem', 'ascii'));
 
@@ -585,7 +587,7 @@ class World {
             // Check if npc is alive
             if (npc.isActive) {
                 // Hunts will process even if the npc is delayed during this portion
-                if (npc.huntMode !== -1 && rsbuf.getNpcObservers(npc.nid) > 0) {
+                if (npc.huntMode !== -1 && (rsbuf.getNpcObservers(npc.nid) > 0 || this.isSim())) {
                     const hunt = HuntType.get(npc.huntMode);
 
                     if (hunt && hunt.type === HuntModeType.PLAYER) {
@@ -609,6 +611,12 @@ class World {
 
         for (const player of this.players) {
             try {
+                if (player.isSim()) {
+                    if (player.clientInput) {
+                        player.clientInput(player);
+                    }
+                    return;
+                }
                 player.playtime++;
 
                 if (this.currentTick % World.AFK_EVENTRATE === 0) {
@@ -755,6 +763,9 @@ class World {
     }
 
     private processLogouts(): void {
+        if (this.isSim()) {
+            return;
+        }
         const start: number = Date.now();
 
         for (const player of this.players) {
@@ -827,6 +838,21 @@ class World {
     private processLogins(): void {
         const start: number = Date.now();
         player: for (const player of this.newPlayers) {
+            if (player.isSim()) {
+                // normal login process
+                const pid: number = this.getNextPid();
+                // insert player into first available slot
+                this.players.set(pid, player);
+
+                player.pid = pid;
+                player.uid = ((Number(player.username37 & 0x1fffffn) << 11) | player.pid) >>> 0;
+                player.tele = true;
+                player.moveClickRequest = false;
+
+                this.gameMap.getZone(player.x, player.z, player.level).enter(player);
+                player.onLogin();
+                continue;
+            }
             // prevent logging in if a player save is being flushed
             if (this.logoutRequests.has(player.username)) {
                 player.addSessionLog(LoggerEventType.ENGINE, 'Tried to log in - old session is mid-logout');
@@ -990,6 +1016,9 @@ class World {
     private processInfo(): void {
         // TODO: benchmark this?
         for (const player of this.players) {
+            if (player.isSim()) {
+                continue;
+            }
             player.reorient();
             player.buildArea.rebuildNormal(); // set origin before compute player is why this is above.
 
@@ -1086,6 +1115,10 @@ class World {
         this.cycleStats[WorldStat.BANDWIDTH_OUT] = 0; // reset bandwidth counter
 
         for (const player of this.players) {
+            if (player.isSim()) {
+                player.updateMap();
+                continue;
+            }
             if (!isClientConnected(player)) {
                 continue;
             }
@@ -1578,6 +1611,28 @@ class World {
             target: targetUsername37
         });
     }
+    async startSim(SimArea: SimArea[]) {
+        this.gameMap.simArea = SimArea;
+        await this.start(false, false);
+        this.tickRate = 0;
+    }
+
+    isSim(): boolean {
+        return this.gameMap.simArea != null;
+    }
+
+    addSimPlayer(name: string, x: number, z: number): SimPlayer {
+        const hash64 = toBase37(name); // username or email.
+        const name37 = toBase37(name); // always username.
+        const safeName = fromBase37(name37); // always safe username.
+        const player = new SimPlayer(safeName, name37, hash64);
+        player.x = x;
+        player.z = z;
+        player.isActive = true;
+        this.newPlayers.add(player);
+        player.setVar(281, 1000); // complete tutorial island
+        return player;
+    }
 
     addPlayer(player: Player): void {
         this.newPlayers.add(player);
@@ -1728,6 +1783,9 @@ class World {
 
     getNextNid(): number {
         return this.npcs.next();
+    }
+    getNextSpid(): number {
+        return this.players.next();
     }
 
     getNextPid(client: ClientSocket | null = null): number {

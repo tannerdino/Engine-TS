@@ -1,0 +1,1 @@
+export type SimArea = {x1: number, z1: number, x2: number, z2: number};

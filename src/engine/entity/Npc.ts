@@ -37,6 +37,7 @@ import ServerTriggerType from '#/engine/script/ServerTriggerType.js';
 import World from '#/engine/World.js';
 import LinkList from '#/util/LinkList.js';
 import { printError } from '#/util/Logger.js';
+import { NpcSimScript } from '#/sim/SimPlayer.js';
 
 export default class Npc extends PathingEntity {
     // constructor properties
@@ -74,6 +75,9 @@ export default class Npc extends PathingEntity {
     wanderCounter: number = 0;
 
     heroPoints: HeroPoints = new HeroPoints(16); // be sure to reset when stats are recovered/reset
+
+    timerScript: NpcSimScript | null = null;
+    move: NpcSimScript | null = null;
 
     constructor(level: number, x: number, z: number, width: number, length: number, lifecycle: EntityLifeCycle, nid: number, type: number, moveRestrict: MoveRestrict, blockWalk: BlockWalk) {
         super(level, x, z, width, length, lifecycle, moveRestrict, blockWalk, MoveStrategy.NAIVE, NpcInfoProt.FACE_COORD, NpcInfoProt.FACE_ENTITY);
@@ -359,6 +363,9 @@ export default class Npc extends PathingEntity {
 
         const moved = this.lastTickX !== this.x || this.lastTickZ !== this.z;
         if (moved) {
+            if (this.move) {
+                this.move(this);
+            }
             this.lastMovement = World.currentTick + 1;
             this.wanderCounter = 0;
         }
@@ -518,6 +525,9 @@ export default class Npc extends PathingEntity {
             const script = ScriptProvider.getByTrigger(ServerTriggerType.AI_TIMER, type.id, type.category);
             if (script) {
                 this.executeScript(ScriptRunner.init(script, this));
+                if (this.timerScript) {
+                    this.timerScript(this);
+                }
                 this.timerClock = 0;
             }
         }
@@ -608,6 +618,21 @@ export default class Npc extends PathingEntity {
             return this.target.isActive;
         }
         return this.target.isValid();
+    }
+
+    coordWithinMaxrange(targetCoord: CoordGrid): boolean {
+        // assume op for now
+        const type = NpcType.get(this.type);
+        const distanceToX = Math.abs(targetCoord.x - this.startX);
+        const distanceToZ = Math.abs(targetCoord.z - this.startZ);
+        if (Math.max(distanceToX, distanceToZ) > type.maxrange + 1) {
+            return false;
+        }
+        // remove corner
+        if (distanceToX === type.maxrange + 1 && distanceToZ === type.maxrange + 1) {
+            return false;
+        }
+        return true;
     }
 
     private targetWithinMaxRange(): boolean {

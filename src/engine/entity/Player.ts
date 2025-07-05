@@ -73,6 +73,7 @@ import { ChatModePrivate, ChatModePublic, ChatModeTradeDuel } from '#/util/ChatM
 import Environment from '#/util/Environment.js';
 import { toDisplayName } from '#/util/JString.js';
 import LinkList from '#/util/LinkList.js';
+import { SimPlayer } from '../../sim/SimPlayer.js';
 
 const levelExperience = new Int32Array(99);
 
@@ -429,6 +430,9 @@ export default class Player extends PathingEntity {
             }
         }
     }
+    isSim(): this is SimPlayer {
+        return false;
+    }
 
     cleanup(): void {
         this.pid = -1;
@@ -664,6 +668,9 @@ export default class Player extends PathingEntity {
         }
 
         if (this.stepsTaken > 0) {
+            if (this.isSim() && this.move) {
+                this.move(this);
+            }
             this.lastMovement = World.currentTick + 1;
         }
 
@@ -1206,6 +1213,11 @@ export default class Player extends PathingEntity {
             }
         }
 
+        if (interacted && !this.apRangeCalled) {
+            if (this.isSim() && this.interact) {
+                this.interact(this);
+            }
+        }
         // If a script called p_op*, then nextTarget is prepped for next cycle
         if (this.nextTarget) {
             this.target = this.nextTarget;
@@ -1744,6 +1756,9 @@ export default class Player extends PathingEntity {
 
             const script = ScriptProvider.getByTriggerSpecific(ServerTriggerType.ADVANCESTAT, stat, -1);
             if (script) {
+                if (this.isSim() && this.levelup) {
+                    this.levelup(this, stat);
+                }
                 this.enqueueScript(script, PlayerQueueType.ENGINE);
             }
         }
