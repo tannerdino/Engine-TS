@@ -409,6 +409,7 @@ async function simDog() {
     player.setLevel(PlayerStat.AGILITY, 99);
 
     player.login = (player) => {
+        console.log(`${World.currentTick}: Logged in`);
         player.give('amulet_of_glory_4', 1);
         player.give('magic_shortbow', 1);
         player.equipAll();
@@ -422,7 +423,19 @@ async function simDog() {
 
         player.opIfButton(1770); // rapid
 
-        player.inputQueue(0, (player) => {player.opTarget(bank, 2);});
+        player.inputQueue(0, (player) => {console.log(`${World.currentTick}: look for bank (1)`); player.opTarget(bank, 2);});
+    };
+
+    player.interact = (player) => {
+        if (player) {
+            console.log(`${World.currentTick}: interacted. ${player.target, player.targetOp}`);
+        }
+    };
+
+    player.move = (player) => {
+        if (player) {
+            console.log(`${World.currentTick}: Moved`);
+        }
     };
 
     player.clientInput = (player) => {
@@ -430,21 +443,21 @@ async function simDog() {
         if (player.delayed) {
             return;
         }
-        if (player.z >= mz) {
+        if (player.z >= mz && player.z <= mz+64) {
             if (player.invFreeSpace(InvType.INV) === 0) {
                 player.opHeldSlot(InvType.INV, 4, 1, true);
                 player.current = null;
                 player.clearInputs();
                 player.inputQueue(1, (player) => {player.opIfButton(2494);});
-                player.wait(0, (player) => {player.opTarget(bank, 2);});
+                player.wait(0, (player) => {console.log(`${World.currentTick}: look for bank (2)`); player.opTarget(bank, 2);});
                 return;
             }
             if (!player.current) {
                 player.current = player.npc_find(bears, player, {x: mx+26, z: mz+3, level: 0});
             }
-        } else if (player.z >= 51*64+57) {
+        } else if (player.z >= 51*64+57 && player.z <= mz+64) {
             player.activate_walk();
-        } else if (player.runenergy >= 100 && player.containsModalInterface() && player.moveSpeed === MoveSpeed.WALK) {
+        } else if (player.runenergy >= 100 && !player.containsModalInterface() && player.moveSpeed === MoveSpeed.WALK) {
             player.activate_run();
         }
         if (player.busy2()) {
@@ -639,5 +652,6 @@ async function simDog() {
     while (World.currentTick < ticks) {
         World.cycle();
     }
-    console.log(`Ticks: ${ticks}, Xp gained: ${player.xp(PlayerStat.MINING - 130344310)}`);
+    console.log(`Ticks: ${ticks}, Xp gained: ${player.xp(PlayerStat.MINING) - 13034431}`);
+    process.exit();
 }

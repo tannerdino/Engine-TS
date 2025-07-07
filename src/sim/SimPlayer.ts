@@ -17,10 +17,12 @@ import { findPath, isLineOfSight } from '#/engine/GameMap.js';
 import ObjType from '#/cache/config/ObjType.js';
 import OutgoingMessage from '#/network/game/server/OutgoingMessage.js';
 import { ModalState } from '#/engine/entity/ModalState.js';
+import { SimInputQueue } from './SimInputQueue.js';
+import LinkList from '#/util/LinkList.js';
+import { SimWaitQueue } from './SimWaitQueue.js';
 
 export type PlayerSimScript = (player: SimPlayer, arg?: number) => void;
 export type NpcSimScript = (npc: Npc) => void;
-type PlayerSimWait = {tick: number, script: PlayerSimScript};
 
 export class SimPlayer extends Player {
     static readonly ACTION_DELAY = 58;
@@ -31,8 +33,8 @@ export class SimPlayer extends Player {
     ticksMoved = 0;
     ticksInteracted = 0;
     eats = 0;
-    waits: PlayerSimWait[] = [];
-    inputQueues: PlayerSimWait[] = [];
+    readonly waits: LinkList<SimWaitQueue> = new LinkList();
+    readonly inputQueues: LinkList<SimInputQueue> = new LinkList();
     current: Npc | null = null;
     locCycle: Loc[] = [];
     locCycleIndex = 0;
@@ -66,47 +68,37 @@ export class SimPlayer extends Player {
         // nothing
     }
     wait(ticks: number, waitScript: PlayerSimScript) {
-        if (this.waits.length < 1) {
-            this.waits.push({tick: World.currentTick + ticks, script: waitScript});
-            return;
-        }
-        this.waits.push({tick: this.waits[this.waits.length - 1].tick + ticks, script: waitScript});
+        this.waits.addTail(new SimWaitQueue(ticks, waitScript));
     }
     waiting(): boolean {
-        for (let i = 0; i < this.waits.length; i++) {
-            const wait = this.waits[i];
-            if (wait.tick <= World.currentTick) { 
-                const diff = World.currentTick - wait.tick;
-                wait.script(this);
-                this.waits.slice(i);
-                if (diff > 0) {
-                    for (let j = 0; j < this.waits.length; j++) {
-                        this.waits[j].tick += diff; // if delayed, or otherwise missed, increase every current wait by the diff
-                    }
-                }
-                return true;
-            }
+        const head = this.waits.head();
+        if (!head) {
+            return false;
         }
-        return false;
+        if (head.delay-- <= 0) {
+            head.script(this);
+            head.unlink();
+        }
+        return true;
     }
     inputQueue(ticks: number, queueScript: PlayerSimScript) {
-        this.inputQueues.push({tick: World.currentTick + ticks, script: queueScript});
+        this.inputQueues.addTail(new SimInputQueue(World.currentTick + ticks, queueScript));
     }
     processInputQueues() {
         if (this.delayed) {
             return;
         }
-        for (let i = 0; i < this.inputQueues.length; i++) {
-            const intputQueue = this.inputQueues[i];
-            if (intputQueue.tick <= World.currentTick) { 
-                intputQueue.script(this);
-                this.inputQueues.slice(i);
+        for (let request: SimInputQueue | null = this.inputQueues.head(); request; request = this.inputQueues.next()) {
+            if (World.currentTick > request.worldTick) {
+                continue;
             }
+            request.script(this);
+            request.unlink();
         }
     }
     clearInputs() {
-        this.inputQueues = [];
-        this.waits = [];
+        this.inputQueues.clear();
+        this.waits.clear();
     }
     busy2(): boolean {
         return this.hasInteraction() || this.hasWaypoints();
