@@ -250,6 +250,7 @@ export default abstract class PathingEntity extends Entity {
             index++;
         }
         this.waypointIndex = index;
+        console.log(`${World.currentTick}: queued waypoints`);
     }
 
     clearWaypoints(): void {
@@ -454,6 +455,7 @@ export default abstract class PathingEntity extends Entity {
 
     pathToTarget(): void {
         if (!this.target) {
+            console.log(`${World.currentTick} no target`);
             return;
         }
 

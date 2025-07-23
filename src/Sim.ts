@@ -357,12 +357,12 @@ async function simFishing() {
 
 async function simDog() {
     const { promptTicks } = await import('./sim/SimPrompts.js');
-    const { MoveSpeed } = await import('./engine/entity/MoveSpeed.js');
     const { PlayerStat } = await import('./engine/entity/PlayerStat.js');
     const InvType = (await import('./cache/config/InvType.js')).default;
     const LocType = (await import('./cache/config/LocType.js')).default;
     const ObjType = (await import('./cache/config/ObjType.js')).default;
     const World = (await import('./engine/World.js')).default;
+    const CAKECAT = 189;
 
     const ticks = await promptTicks();
     // const usingDoll = await promptQuestion("Include the use of the Iban Doll?");
@@ -406,7 +406,9 @@ async function simDog() {
     player.setLevel(PlayerStat.HITPOINTS, 99);
     player.setLevel(PlayerStat.RANGED, 99);
     player.setLevel(PlayerStat.MINING, 99);
+    player.setLevel(PlayerStat.MAGIC, 99);
     player.setLevel(PlayerStat.AGILITY, 99);
+    player.setVar(165, 30); // elena progress
 
     player.login = (player) => {
         console.log(`${World.currentTick}: Logged in`);
@@ -421,21 +423,11 @@ async function simDog() {
         player.inv_add(95, 'cake', 10000000);
         player.inv_add(95, 'bronze_arrow', 10000000);
 
-        player.opIfButton(1770); // rapid
-
-        player.inputQueue(0, (player) => {console.log(`${World.currentTick}: look for bank (1)`); player.opTarget(bank, 2);});
-    };
-
-    player.interact = (player) => {
-        if (player) {
-            console.log(`${World.currentTick}: interacted. ${player.target, player.targetOp}`);
-        }
-    };
-
-    player.move = (player) => {
-        if (player) {
-            console.log(`${World.currentTick}: Moved`);
-        }
+        player.wait(0, (player) => {
+            // console.log(`${World.currentTick}: look for bank (1)`);
+            player.opIfButton(1770); // rapid
+            player.opTarget(bank, 2);
+        });
     };
 
     player.clientInput = (player) => {
@@ -444,12 +436,13 @@ async function simDog() {
             return;
         }
         if (player.z >= mz && player.z <= mz+64) {
-            if (player.invFreeSpace(InvType.INV) === 0) {
+            // console.log(`${World.currentTick}: inv_freespace ${player.invFreeSpace(InvType.INV)}, cakes ${player.invTotalCat(InvType.INV, CAKECAT)}`);
+            if (player.invFreeSpace(InvType.INV) === 0 && player.invTotalCat(InvType.INV, CAKECAT) == 0) {
                 player.opHeldSlot(InvType.INV, 4, 1, true);
                 player.current = null;
                 player.clearInputs();
-                player.inputQueue(1, (player) => {player.opIfButton(2494);});
-                player.wait(0, (player) => {console.log(`${World.currentTick}: look for bank (2)`); player.opTarget(bank, 2);});
+                player.inputQueue(0, (player) => {player.opIfButton(2494);});
+                player.wait(0, (player) => {player.opTarget(bank, 2);});
                 return;
             }
             if (!player.current) {
@@ -457,7 +450,7 @@ async function simDog() {
             }
         } else if (player.z >= 51*64+57 && player.z <= mz+64) {
             player.activate_walk();
-        } else if (player.runenergy >= 100 && !player.containsModalInterface() && player.moveSpeed === MoveSpeed.WALK) {
+        } else if (player.runenergy >= 100 && !player.containsModalInterface() && !player.run) {
             player.activate_run();
         }
         if (player.busy2()) {
@@ -467,13 +460,13 @@ async function simDog() {
             return;
         }
         if (player.banking()) { // server only processes 5 packets at a time
-            console.log(World.currentTick, 'banking');
+            // console.log(World.currentTick, 'banking');
             player.bank_deposit('iron_ore');
             player.bank_deposit('uncut_sapphire');
             player.bank_deposit('uncut_emerald');
             player.bank_deposit('uncut_diamond');
             player.bank_deposit('uncut_ruby');
-            player.wait(1, (player) => {
+            player.wait(0, (player) => {
                 if (player.invTotal(InvType.INV, ObjType.getId('amulet_of_glory')) > 0) {
                     player.bank_deposit('amulet_of_glory');
                     player.bank_withdraw('amulet_of_glory_4', 1);
@@ -483,18 +476,17 @@ async function simDog() {
                 player.bank_withdraw('lawrune', 1);
             });
 
-            player.wait(1, (player) => {
+            player.wait(0, (player) => {
                 player.bank_withdraw('lawrune', 1);
                 player.bank_withdraw('waterrune', 1);
                 player.bank_withdraw('waterrune', 1);
                 player.bank_withdraw('bronze_arrow', 1);
                 player.closeModal();
             });
-            player.wait(1, (player) => {
+            player.wait(0, (player) => {
                 player.opIfButton(1540); // ardy tele
             });
             player.wait(0, (player) => { // do this instantly after teleporting
-                // player.opTarget(rock6, 1);
                 player.opMoveTo(mx+21, mz+0);
                 player.equip('bronze_arrow');
             });
@@ -527,14 +519,7 @@ async function simDog() {
 
             // rock 2
             player.wait(0, (player) => {
-                if (!player.current) {
-                    player.opMoveTo(mx+26,mz+3);
-                } else {
-                    player.opTarget(player.current, 2);
-                    player.inputQueue(0, (player) => {player.opMoveTo(mx+26,mz+3);});
-                }
-            });
-            player.wait(0, (player) => {
+                player.opHeldCat(InvType.INV, 1, 'cake');
                 player.opTarget(rock2, 1);
             });
 
@@ -579,7 +564,7 @@ async function simDog() {
             player.wait(0, (player) => {
                 player.opTarget(rock6, 1);
             });
-            for (let i = 0; i < 2; i++) {
+            for (let i = 0; i < 4; i++) {
                 // rock 1
                 player.wait(0, (player) => {
                     player.activate_run();
@@ -597,10 +582,9 @@ async function simDog() {
 
                 // rock 2
                 player.wait(0, (player) => {
-                    if (player.invGetSlot(InvType.INV, 2)) {
-                        player.opHeldSlot(InvType.INV, 1, 2);
-                    } else {
-                        player.opHeldSlot(InvType.INV, 1, 3);
+                    player.opHeldCat(InvType.INV, 1, 'cake');
+                    if (player.invFreeSpace(InvType.INV) === 0) { // if inv full, drop the cake part
+                        player.opHeldCat(InvType.INV, 5, 'cake');
                     }
                     player.opTarget(rock2, 1);
                 });
@@ -623,10 +607,9 @@ async function simDog() {
 
                 // rock 5
                 player.wait(0, (player) => {
-                    if (player.invGetSlot(InvType.INV, 2)) {
-                        player.opHeldSlot(InvType.INV, 1, 2);
-                    } else {
-                        player.opHeldSlot(InvType.INV, 1, 3);
+                    player.opHeldCat(InvType.INV, 1, 'cake');
+                    if (player.invFreeSpace(InvType.INV) === 0) { // if inv full, drop the cake part
+                        player.opHeldCat(InvType.INV, 5, 'cake');
                     }
                     player.opTarget(rock5, 1);
                 });
@@ -653,5 +636,5 @@ async function simDog() {
         World.cycle();
     }
     console.log(`Ticks: ${ticks}, Xp gained: ${player.xp(PlayerStat.MINING) - 13034431}`);
-    process.exit();
+    // process.exit();
 }

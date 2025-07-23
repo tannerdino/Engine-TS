@@ -20,12 +20,16 @@ import { ModalState } from '#/engine/entity/ModalState.js';
 import { SimInputQueue } from './SimInputQueue.js';
 import LinkList from '#/util/LinkList.js';
 import { SimWaitQueue } from './SimWaitQueue.js';
+import NpcType from '#/cache/config/NpcType.js';
+import LocType from '#/cache/config/LocType.js';
+import ScriptState from '#/engine/script/ScriptState.js';
 
 export type PlayerSimScript = (player: SimPlayer, arg?: number) => void;
 export type NpcSimScript = (npc: Npc) => void;
 
 export class SimPlayer extends Player {
     static readonly ACTION_DELAY = 58;
+    static readonly ACTIVATE_WALK_COM = 152;
     static readonly ACTIVATE_RUN_COM = 153;
     int = 0;
     stepsLeft = 0;
@@ -38,6 +42,7 @@ export class SimPlayer extends Player {
     current: Npc | null = null;
     locCycle: Loc[] = [];
     locCycleIndex = 0;
+    debug: boolean = false;
     clientInput: PlayerSimScript | null = null;
     interact: PlayerSimScript | null = null;
     move: PlayerSimScript | null = null;
@@ -67,6 +72,11 @@ export class SimPlayer extends Player {
     override write(message: OutgoingMessage): void {
         // nothing
     }
+    override messageGame(msg: string) {
+        if (this.debug) {
+            console.log(`${World.currentTick}: ${msg}`);
+        }
+    }
     wait(ticks: number, waitScript: PlayerSimScript) {
         this.waits.addTail(new SimWaitQueue(ticks, waitScript));
     }
@@ -89,7 +99,7 @@ export class SimPlayer extends Player {
             return;
         }
         for (let request: SimInputQueue | null = this.inputQueues.head(); request; request = this.inputQueues.next()) {
-            if (World.currentTick > request.worldTick) {
+            if (request.worldTick > World.currentTick) {
                 continue;
             }
             request.script(this);
@@ -104,7 +114,7 @@ export class SimPlayer extends Player {
         return this.hasInteraction() || this.hasWaypoints();
     }
     banking(): boolean {
-        return this.modalMain === 5292 && this.modalState === ModalState.MAIN;
+        return this.modalMain === 5292 && this.containsModalInterface();
     }
     bank_withdraw(obj: string, count: number) {
         if (count === 1) {
@@ -127,7 +137,7 @@ export class SimPlayer extends Player {
         this.opIfButton(SimPlayer.ACTIVATE_RUN_COM);
     }
     activate_walk() {
-
+        this.opIfButton(SimPlayer.ACTIVATE_WALK_COM);
     }
     destination(): CoordGrid | null { 
         return CoordGrid.unpackCoord(this.waypoints[this.waypointIndex]);
@@ -154,6 +164,13 @@ export class SimPlayer extends Player {
     }
     opIfButton(comId: number) {
         const com = Component.get(comId);
+        this.lastCom = comId;
+        if (this.resumeButtons.indexOf(this.lastCom) !== -1) {
+            if (this.activeScript && this.activeScript.execution === ScriptState.PAUSEBUTTON) {
+                this.executeScript(this.activeScript, true, true);
+            }
+            return;
+        }
         const root = Component.get(com.rootLayer);
         const script = ScriptProvider.getByTriggerSpecific(ServerTriggerType.IF_BUTTON, comId, -1);
         if (script) {
@@ -162,7 +179,7 @@ export class SimPlayer extends Player {
     }
     opInvButton(comId: number, obj: string, op: number) {
         if (this.delayed) {
-            return false;
+            return;
         }
         const type = ObjType.getByName(obj);
         if (!type) {
@@ -171,7 +188,7 @@ export class SimPlayer extends Player {
 
         const listener = this.invListeners.find(l => l.com === comId);
         if (!listener) {
-            return false;
+            return;
         }
         const inv = this.getInventoryFromListener(listener);
         if (!inv) {
@@ -184,8 +201,7 @@ export class SimPlayer extends Player {
 
         this.lastItem = type.id;
         this.lastSlot = slot;
-
-        const script = ScriptProvider.getByTrigger(ServerTriggerType.INV_BUTTON1 + op - 1, type.id, type.category);
+        const script = ScriptProvider.getByTrigger(ServerTriggerType.INV_BUTTON1 + op - 1, comId, -1);
         if (script) {
             const root = Component.get(Component.get(comId).rootLayer);
             this.executeScript(ScriptRunner.init(script, this), root.overlay == false);
@@ -216,7 +232,6 @@ export class SimPlayer extends Player {
         const script = ScriptProvider.getByTrigger(ServerTriggerType.OPHELD1 + op - 1, type.id, type.category);
         if (script) {
             this.executeScript(ScriptRunner.init(script, this), true);
-            return true;
         }
     }
     opHeldSlot(invId: number, op:number, slot: number, clearaction: boolean = true) {
@@ -237,6 +252,36 @@ export class SimPlayer extends Player {
         this.lastItem = item.id;
         this.lastSlot = slot;
         const type = ObjType.get(item.id);
+        const script = ScriptProvider.getByTrigger(ServerTriggerType.OPHELD1 + op - 1, type.id, type.category);
+        if (script) {
+            this.executeScript(ScriptRunner.init(script, this), true);
+        }
+    }
+    opHeldCat(invId: number, op:number, obj: string, clearaction: boolean = true) {
+        if (this.delayed) {
+            return;
+        }
+        if (clearaction) {
+            this.clearPendingAction();
+        }
+        const inv = this.getInventory(invId);
+        if (!inv) {
+            return;
+        }
+        const type = ObjType.getByName(obj);
+        if (!type) {
+            return;
+        }
+        const slot = inv.items.findIndex(item => item && ObjType.get(item.id).category == type.category);
+        if (slot == -1) {
+            return;
+        }
+        const slotObj = inv.get(slot);
+        if (!slotObj) {
+            return;
+        }
+        this.lastItem = slotObj.id;
+        this.lastSlot = slot;
         const script = ScriptProvider.getByTrigger(ServerTriggerType.OPHELD1 + op - 1, type.id, type.category);
         if (script) {
             this.executeScript(ScriptRunner.init(script, this), true);
@@ -277,6 +322,12 @@ export class SimPlayer extends Player {
             this.targetSubject.type = -1;
         }
         this.pathToTarget();
+        // if (target instanceof Npc) {
+        //     console.log(`${World.currentTick}: path to target '${NpcType.get(target.type).debugname}'`);
+        // } else if (target instanceof Loc) {
+        //     console.log(`${World.currentTick}: path to target '${LocType.get(target.type).debugname}'`);
+        // }
+        // console.log(`${World.currentTick}: Waypoints: ${this.hasWaypoints()}`);
     }
     opMoveTo(x: number, z: number) {
         if (this.delayed) {
