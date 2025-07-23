@@ -243,6 +243,7 @@ async function simFishing() {
     let total_ticksmoved = 0;
     let total_ticksinteracted = 0;
     let total_rolls = 0;
+    console.log(ticks);
     while (World.currentTick < ticks) {
         World.cycle();
         if (World.currentTick % 6000 === 0) {
@@ -260,6 +261,7 @@ async function simFishing() {
         }
     }
     console.log('Total Hours:', hour, ' Total Rolls:', total_rolls, ' Avg Xp/hr:', (player.stats[PlayerStat.FISHING] - 130344310) / 10 * (6000/ticks), ' Total Ticks moving:', total_ticksmoved, ' Total Ticks interacting:', total_ticksinteracted);
+    process.exit(0);
 }
 
 // async function simSpiders(ticks: number) {
@@ -636,5 +638,5 @@ async function simDog() {
         World.cycle();
     }
     console.log(`Ticks: ${ticks}, Xp gained: ${player.xp(PlayerStat.MINING) - 13034431}`);
-    // process.exit();
+    process.exit(0);
 }
