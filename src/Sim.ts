@@ -66,7 +66,7 @@ async function simAgility() {
     const { promptStatLevel, promptStatXpGoal } = await import('./sim/SimPrompts.js');
     const { MoveSpeed } = await import('./engine/entity/MoveSpeed.js');
     const { PlayerStat, PlayerStatNameMap } = await import('./engine/entity/PlayerStat.js');
-    const { getLevelByExp } = await import('./engine/entity/Player.js');
+    const { getLevelByExp } = await import('./sim/Exp.js');
     const World = (await import('./engine/World.js')).default;
     const Loc = (await import('./engine/entity/Loc.js')).default;
 

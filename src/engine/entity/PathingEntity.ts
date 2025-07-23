@@ -250,7 +250,6 @@ export default abstract class PathingEntity extends Entity {
             index++;
         }
         this.waypointIndex = index;
-        console.log(`${World.currentTick}: queued waypoints`);
     }
 
     clearWaypoints(): void {

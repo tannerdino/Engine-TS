@@ -322,12 +322,6 @@ export class SimPlayer extends Player {
             this.targetSubject.type = -1;
         }
         this.pathToTarget();
-        // if (target instanceof Npc) {
-        //     console.log(`${World.currentTick}: path to target '${NpcType.get(target.type).debugname}'`);
-        // } else if (target instanceof Loc) {
-        //     console.log(`${World.currentTick}: path to target '${LocType.get(target.type).debugname}'`);
-        // }
-        // console.log(`${World.currentTick}: Waypoints: ${this.hasWaypoints()}`);
     }
     opMoveTo(x: number, z: number) {
         if (this.delayed) {
@@ -368,7 +362,6 @@ export class SimPlayer extends Player {
 
     tick_fish(fish: Npc, delay:number) {
         // this.clearPendingAction();
-        console.log(World.currentTick, ' 3 ticked.');
         this.invDelSlot(InvType.INV, 2);
         this.setVar(SimPlayer.ACTION_DELAY, World.currentTick + delay - 1);
         this.opTarget(fish, ServerTriggerType.APNPC1);
